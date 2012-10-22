@@ -6,14 +6,19 @@ module ThumbsUp #:nodoc:
     end
 
     module ClassMethods
-      def acts_as_voter
+      def acts_as_voter(options = {})
+        cattr_accessor :voter_options
+
+        self.voter_options ||= {}
+        self.voter_options[:vote_model] = (options[:vote_model] || 'Vote').constantize
+        self.voter_options[:association_name] = (options[:association_name] || self.voter_options[:vote_model].to_s.tableize).to_sym
 
         # If a voting entity is deleted, keep the votes.
         # If you want to nullify (and keep the votes), you'll need to remove
         # the unique constraint on the [ voter, voteable ] index in the database.
         # has_many :votes, :as => :voter, :dependent => :nullify
         # Destroy votes when a user is deleted.
-        has_many :votes, :as => :voter, :dependent => :destroy
+        has_many self.voter_options[:association_name], :as => :voter, :dependent => :destroy
 
         include ThumbsUp::ActsAsVoter::InstanceMethods
         extend  ThumbsUp::ActsAsVoter::SingletonMethods
@@ -32,7 +37,7 @@ module ThumbsUp #:nodoc:
       #       user.vote_count()      # All votes
 
       def vote_count(for_or_against = :all)
-        v = Vote.where(:voter_id => id).where(:voter_type => self.class.base_class.name)
+        v = self.class.voter_options[:vote_model].where(:voter_id => id).where(:voter_type => self.class.base_class.name)
         v = case for_or_against
           when :all   then v
           when :up    then v.where(:vote => true)
@@ -50,7 +55,7 @@ module ThumbsUp #:nodoc:
       end
 
       def voted_on?(voteable)
-        0 < Vote.where(
+        0 < self.class.voter_options[:vote_model].where(
               :voter_id => self.id,
               :voter_type => self.class.base_class.name,
               :voteable_id => voteable.id,
@@ -76,15 +81,18 @@ module ThumbsUp #:nodoc:
 
       def vote(voteable, options = {})
         raise ArgumentError, "you must specify :up or :down in order to vote" unless options[:direction] && [:up, :down].include?(options[:direction].to_sym)
-        if options[:exclusive]
-          self.unvote_for(voteable)
+        toggle_vote = self.voted_which_way?(voteable, options[:direction])
+
+        self.unvote_for(voteable) if options[:exclusive] || toggle_vote
+
+        unless toggle_vote
+          direction = (options[:direction].to_sym == :up)
+          self.class.voter_options[:vote_model].create!(:vote => direction, :voteable => voteable, :voter => self)
         end
-        direction = (options[:direction].to_sym == :up)
-        Vote.create!(:vote => direction, :voteable => voteable, :voter => self)
       end
 
       def unvote_for(voteable)
-        Vote.where(
+        self.class.voter_options[:vote_model].where(
           :voter_id => self.id,
           :voter_type => self.class.base_class.name,
           :voteable_id => voteable.id,
@@ -96,7 +104,7 @@ module ThumbsUp #:nodoc:
 
       def voted_which_way?(voteable, direction)
         raise ArgumentError, "expected :up or :down" unless [:up, :down].include?(direction)
-        0 < Vote.where(
+        0 < self.class.voter_options[:vote_model].where(
               :voter_id => self.id,
               :voter_type => self.class.base_class.name,
               :vote => direction == :up ? true : false,

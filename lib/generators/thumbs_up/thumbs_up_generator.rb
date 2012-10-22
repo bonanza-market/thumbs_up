@@ -5,7 +5,9 @@ class ThumbsUpGenerator < Rails::Generators::Base
   include Rails::Generators::Migration
 
   source_root File.expand_path('../templates', __FILE__)
-  
+
+  argument :vote_model_name, :type => :string, :default => "Vote"
+
   class_option :unique_voting, :type => :boolean, :default => true, :desc => 'Do you want only one vote allowed per voter? (default: true)'
 
   # Implement the required interface for Rails::Generators::Migration.
@@ -23,7 +25,7 @@ class ThumbsUpGenerator < Rails::Generators::Base
   end
 
   def move_vote_model
-    template 'vote.rb', File.join('app', 'models', 'vote.rb')
+    template 'vote.rb', File.join('app', 'models', "#{vote_model_name.underscore}.rb")
   end
 
 end

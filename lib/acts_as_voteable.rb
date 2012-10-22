@@ -7,8 +7,14 @@ module ThumbsUp
     end
 
     module ClassMethods
-      def acts_as_voteable
-        has_many :votes, :as => :voteable, :dependent => :destroy
+      def acts_as_voteable(options = {})
+        cattr_accessor :voteable_options
+
+        self.voteable_options ||= {}
+        self.voteable_options[:vote_model] = (options[:vote_model] || 'Vote').constantize
+        self.voteable_options[:association_name] = (options[:association_name] || self.voteable_options[:vote_model].to_s.tableize).to_sym
+
+        has_many self.voteable_options[:association_name], :as => :voteable, :dependent => :destroy
 
         include ThumbsUp::ActsAsVoteable::InstanceMethods
         extend  ThumbsUp::ActsAsVoteable::SingletonMethods
@@ -24,16 +30,16 @@ module ThumbsUp
       # You can also have the upvotes and downvotes returned separately in the same query:
       # Post.plusminus_tally(:separate_updown => true)
       def plusminus_tally(params = {})
-        t = self.joins("LEFT OUTER JOIN #{Vote.table_name} ON #{self.table_name}.id = #{Vote.table_name}.voteable_id AND #{Vote.table_name}.voteable_type = '#{self.name}'")
+        t = self.joins("LEFT OUTER JOIN #{self.class.voteable_options[:vote_model].table_name} ON #{self.table_name}.id = #{self.class.voteable_options[:vote_model].table_name}.voteable_id AND #{self.class.voteable_options[:vote_model].table_name}.voteable_type = '#{self.name}'")
         t = t.order("plusminus_tally DESC")
         t = t.group("#{self.table_name}.id")
         t = t.select("#{self.table_name}.*")
         if mysql?
-          table = "CAST(#{Vote.table_name}.vote AS UNSIGNED)"
+          table = "CAST(#{self.class.voteable_options[:vote_model].table_name}.vote AS UNSIGNED)"
           true_value = '1'
           false_value = '0'
         else
-          table = "#{Vote.table_name}.vote"
+          table = "#{self.class.voteable_options[:vote_model].table_name}.vote"
           true_value = 'true'
           false_value = 'false'
         end
@@ -42,7 +48,7 @@ module ThumbsUp
           t = t.select("SUM(CASE #{table} WHEN #{true_value} THEN 1 WHEN #{false_value} THEN 0 ELSE 0 END) AS up")
           t = t.select("SUM(CASE #{table} WHEN #{true_value} THEN 0 WHEN #{false_value} THEN 1 ELSE 0 END) AS down")
         end
-        t = t.select("COUNT(#{Vote.table_name}.id) AS vote_count")
+        t = t.select("COUNT(#{self.class.voteable_options[:vote_model].table_name}.id) AS vote_count")
       end
 
       # #rank_tally is depreciated.
@@ -55,11 +61,11 @@ module ThumbsUp
       # this method call.
       # i.e. Posts.tally.where('votes.created_at > ?', 2.days.ago)
       def tally(*args)
-        t = self.joins("LEFT OUTER JOIN #{Vote.table_name} ON #{self.table_name}.id = #{Vote.table_name}.voteable_id")
+        t = self.joins("LEFT OUTER JOIN #{self.class.voteable_options[:vote_model].table_name} ON #{self.table_name}.id = #{self.class.voteable_options[:vote_model].table_name}.voteable_id")
         t = t.order("vote_count DESC")
         t = t.group("#{self.table_name}.id")
         t = t.select("#{self.table_name}.*")
-        t = t.select("COUNT(#{Vote.table_name}.id) AS vote_count")
+        t = t.select("COUNT(#{self.class.voteable_options[:vote_model].table_name}.id) AS vote_count")
       end
 
       def column_names_for_tally
@@ -71,19 +77,19 @@ module ThumbsUp
     module InstanceMethods
 
       def votes_for
-        self.votes.where(:vote => true).count
+        self.send(self.class.voteable_options[:association_name]).where(:vote => true).count
       end
 
       def votes_against
-        self.votes.where(:vote => false).count
+        self.send(self.class.voteable_options[:association_name]).where(:vote => false).count
       end
 
       def percent_for
-        (votes_for.to_f * 100 / (self.votes.size + 0.0001)).round
+        (votes_for.to_f * 100 / (self.send(self.class.voteable_options[:association_name]).size + 0.0001)).round
       end
 
       def percent_against
-        (votes_against.to_f * 100 / (self.votes.size + 0.0001)).round
+        (votes_against.to_f * 100 / (self.send(self.class.voteable_options[:association_name]).size + 0.0001)).round
       end
 
       # You'll probably want to use this method to display how 'good' a particular voteable
@@ -98,7 +104,7 @@ module ThumbsUp
       # http://evanmiller.org/how-not-to-sort-by-average-rating.html
       def ci_plusminus(confidence = 0.95)
         require 'statistics2'
-        n = votes.size
+        n = send(self.class.voteable_options[:association_name]).size
         if n == 0
           return 0
         end
@@ -108,15 +114,15 @@ module ThumbsUp
       end
 
       def votes_count
-        votes.size
+        send(self.class.voteable_options[:association_name]).size
       end
 
       def voters_who_voted
-        votes.map(&:voter).uniq
+        send(self.class.voteable_options[:association_name]).map(&:voter).uniq
       end
 
       def voted_by?(voter)
-        0 < Vote.where(
+        0 < self.class.voteable_options[:vote_model].where(
               :voteable_id => self.id,
               :voteable_type => self.class.base_class.name,
               :voter_id => voter.id
