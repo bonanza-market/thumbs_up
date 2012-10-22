@@ -14,7 +14,7 @@ module ThumbsUp
         self.voteable_options[:vote_model] = (options[:vote_model] || 'Vote').constantize
         self.voteable_options[:association_name] = (options[:association_name] || self.voteable_options[:vote_model].to_s.tableize).to_sym
 
-        has_many self.voteable_options[:association_name], :as => :voteable, :dependent => :destroy
+        has_many self.voteable_options[:association_name], :class_name => self.voteable_options[:vote_model].to_s, :as => :voteable, :dependent => :destroy
 
         include ThumbsUp::ActsAsVoteable::InstanceMethods
         extend  ThumbsUp::ActsAsVoteable::SingletonMethods
