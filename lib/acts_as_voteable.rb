@@ -30,16 +30,16 @@ module ThumbsUp
       # You can also have the upvotes and downvotes returned separately in the same query:
       # Post.plusminus_tally(:separate_updown => true)
       def plusminus_tally(params = {})
-        t = self.joins("LEFT OUTER JOIN #{self.class.voteable_options[:vote_model].table_name} ON #{self.table_name}.id = #{self.class.voteable_options[:vote_model].table_name}.voteable_id AND #{self.class.voteable_options[:vote_model].table_name}.voteable_type = '#{self.name}'")
+        t = self.joins("LEFT OUTER JOIN #{self.voteable_options[:vote_model].table_name} ON #{self.table_name}.id = #{self.voteable_options[:vote_model].table_name}.voteable_id AND #{self.voteable_options[:vote_model].table_name}.voteable_type = '#{self.name}'")
         t = t.order("plusminus_tally DESC")
         t = t.group("#{self.table_name}.id")
         t = t.select("#{self.table_name}.*")
         if mysql?
-          table = "CAST(#{self.class.voteable_options[:vote_model].table_name}.vote AS UNSIGNED)"
+          table = "CAST(#{self.voteable_options[:vote_model].table_name}.vote AS UNSIGNED)"
           true_value = '1'
           false_value = '0'
         else
-          table = "#{self.class.voteable_options[:vote_model].table_name}.vote"
+          table = "#{self.voteable_options[:vote_model].table_name}.vote"
           true_value = 'true'
           false_value = 'false'
         end
@@ -48,7 +48,7 @@ module ThumbsUp
           t = t.select("SUM(CASE #{table} WHEN #{true_value} THEN 1 WHEN #{false_value} THEN 0 ELSE 0 END) AS up")
           t = t.select("SUM(CASE #{table} WHEN #{true_value} THEN 0 WHEN #{false_value} THEN 1 ELSE 0 END) AS down")
         end
-        t = t.select("COUNT(#{self.class.voteable_options[:vote_model].table_name}.id) AS vote_count")
+        t = t.select("COUNT(#{self.voteable_options[:vote_model].table_name}.id) AS vote_count")
       end
 
       # #rank_tally is depreciated.
@@ -61,11 +61,11 @@ module ThumbsUp
       # this method call.
       # i.e. Posts.tally.where('votes.created_at > ?', 2.days.ago)
       def tally(*args)
-        t = self.joins("LEFT OUTER JOIN #{self.class.voteable_options[:vote_model].table_name} ON #{self.table_name}.id = #{self.class.voteable_options[:vote_model].table_name}.voteable_id")
+        t = self.joins("LEFT OUTER JOIN #{self.voteable_options[:vote_model].table_name} ON #{self.table_name}.id = #{self.voteable_options[:vote_model].table_name}.voteable_id")
         t = t.order("vote_count DESC")
         t = t.group("#{self.table_name}.id")
         t = t.select("#{self.table_name}.*")
-        t = t.select("COUNT(#{self.class.voteable_options[:vote_model].table_name}.id) AS vote_count")
+        t = t.select("COUNT(#{self.voteable_options[:vote_model].table_name}.id) AS vote_count")
       end
 
       def column_names_for_tally
